@@ -6,6 +6,8 @@ const feedController = require('../controllers/feed');
 const router = express.Router();
 
 // GET /feed/posts
+router.get('/posts/:postId', feedController.getPost);
+
 router.get('/posts', feedController.getPosts);
 
 // POST /feed/post
@@ -13,4 +15,7 @@ router.post('/post', [body('title').trim().isLength({ min: 5 }), body('content')
 
 router.get('/post/:postId', feedController.getPost);
 
+router.put('/post/:postId', feedController.updatePost);
+
+// router.delete()
 module.exports = router;
