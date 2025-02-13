@@ -19,9 +19,16 @@ exports.getPost = (req, res, next) => {
 
 };
 exports.getPosts = (req, res, next) => {
+    const currentPage = req.query.page || 1
+    const perPage = 2;
+    let totalCount = 0;
     Post.find()
-        .then(posts => {
-            res.status(200).json({ message: 'Fetched posts successfully.', posts: posts });
+        .countDocuments()
+        .then((count) => {
+            totalCount = count;
+            return Post.find().skip((currentPage - 1) * perPage).limit(perPage);
+        }).then(posts => {
+            res.status(200).json({ message: 'Fetched posts successfully.', posts: posts, totalItems: totalCount });
         })
         .catch(err => {
             if (!err.statusCode) {
@@ -139,6 +146,31 @@ exports.updatePost = (req, res, next) => {
             }
             next(err);
         })
+}
+exports.deletePost = (req, res, next) => {
+    const postId = req.params.postId;
+    Post.findById(postId).then((result) => {
+        if (!result) {
+            const err = new Error('cant find ur post');
+            err.statusCode = 404;
+            throw err;
+        }
+        clearImage(result.imageUrl);
+        return Post.findByIdAndDelete(postId);
+
+    })
+        .then(result => {
+            console.log(result);
+            res.status(200).json({ message: 'post deleted' });
+        })
+        .catch((err) => {
+            if (!err.statusCode) {
+                err.statusCode = 500;
+
+            }
+            next(err);
+        })
+
 }
 const clearImage = filePath => {
     filePath = path.join(__dirname, '..', filePath);

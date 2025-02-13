@@ -2,6 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const feedRoutes = require('./routes/feed');
+const authRoutes = require('./routes/feed');
 const path = require('path');
 const { error } = require('console');
 const app = express();
@@ -39,7 +40,11 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use('/feed', feedRoutes)
+
+app.use('/feed', feedRoutes);
+app.use('/auth', authRoutes);
+
+
 app.use(error, (req, res, next) => {
     const status = error.statusCode;
     const message = error.message;
