@@ -27,4 +27,4 @@ const postSchema = new Schema({
         require: true
     }
 }, { timeStamps: true })
-module.exports = mongoose.model('post', postSchema);
+module.exports = mongoose.model('Post', postSchema);
