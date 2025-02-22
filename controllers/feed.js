@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const Post = require('../models/post');
 const path = require('path');
 const fs = require('fs');
+const User = require('../models/user');
 
 exports.getPost = (req, res, next) => {
     const id = req.params.postId;
@@ -56,20 +57,32 @@ exports.createPost = (req, res, next) => {
     const imageUrl = req.file.path.replace("\\", "/");
     const title = req.body.title;
     const content = req.body.content;
+    let creator;
     const post = new Post({
         title: title,
         content: content,
         imageUrl: imageUrl,
-        creator: { name: 'max' },
+        creator: req.userId,
         createdAt: Date.now()
     });
-    post.save().then((result) => {
-        // console.log(result);
-        res.status(201).json({
-            message: 'Post created successfully!',
-            post: result
-        });
+    post.save().then(user => {
+        return User.findById(req.userId);
     })
+        .then((user) => {
+            // console.log(user);
+            user.posts.push(post);
+
+            creator = user;
+            return user.save();
+
+        })
+        .then(result => {
+            res.status(201).json({
+                message: 'Post created successfully!',
+                post: post,
+                creator: { id: creator._id, name: creator.name }
+            });
+        })
         .catch(err => {
             if (!err.statusCode) {
                 err.statusCode = 500;
@@ -128,6 +141,12 @@ exports.updatePost = (req, res, next) => {
                 err.statusCode = 404;
                 throw err;
             }
+            console.log(post.creator, req.userId);
+            if (post.creator.toString() !== req.userId) {
+                const err = new Error('Not autherized');
+                err.statusCode = 403;
+                throw err;
+            }
             if (imageURL.toString() !== post.imageUrl.toString()) {
                 clearImage(post.imageUrl);
             }
@@ -142,7 +161,6 @@ exports.updatePost = (req, res, next) => {
         .catch((err) => {
             if (!err.statusCode) {
                 err.statusCode = 500;
-
             }
             next(err);
         })
@@ -155,18 +173,28 @@ exports.deletePost = (req, res, next) => {
             err.statusCode = 404;
             throw err;
         }
+        if (result.creator.toString() !== req.userId) {
+            const err = new Error('Not autherized');
+            err.statusCode = 403;
+            throw err;
+        }
         clearImage(result.imageUrl);
         return Post.findByIdAndDelete(postId);
 
+    }).then(user => {
+        return User.findById(req.userId);
     })
         .then(result => {
-            console.log(result);
+            result.posts.pull(postId);
+            return result.save()
+        })
+        .then(result => {
+
             res.status(200).json({ message: 'post deleted' });
         })
         .catch((err) => {
             if (!err.statusCode) {
                 err.statusCode = 500;
-
             }
             next(err);
         })
