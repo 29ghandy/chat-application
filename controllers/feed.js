@@ -3,11 +3,12 @@ const Post = require('../models/post');
 const path = require('path');
 const fs = require('fs');
 const User = require('../models/user');
+const io = require('../socket');
 
-exports.getPost = (req, res, next) => {
+exports.getPost = async (req, res, next) => {
     const id = req.params.postId;
-
-    Post.findById(id).then((post) => {
+    try {
+        const post = await Post.findById(id)
         if (!post) {
             const error = new Error('no post found');
             error.statusCode = 404;
@@ -15,83 +16,70 @@ exports.getPost = (req, res, next) => {
         }
         res.status(200).json({ message: 'Posts found', post: post });
 
-    }).catch((error) => { console.log(error) });
+    }
+    catch (error) { console.log(error) };
 
 
 };
-exports.getPosts = (req, res, next) => {
+exports.getPosts = async (req, res, next) => {
     const currentPage = req.query.page || 1
     const perPage = 2;
-    let totalCount = 0;
-    Post.find()
-        .countDocuments()
-        .then((count) => {
-            totalCount = count;
-            return Post.find().skip((currentPage - 1) * perPage).limit(perPage);
-        }).then(posts => {
-            res.status(200).json({ message: 'Fetched posts successfully.', posts: posts, totalItems: totalCount });
-        })
-        .catch(err => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
-        });
+    try {
+        const totalCount = await Post.find().countDocuments()
+        const posts = await Post.find().sort({ createdAt: -1 }).skip((currentPage - 1) * perPage).limit(perPage);
+
+        res.status(200).json({ message: 'Fetched posts successfully.', posts: posts, totalItems: totalCount });
+    }
+    catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    }
 };
 
-exports.createPost = (req, res, next) => {
+exports.createPost = async (req, res, next) => {
     const errors = validationResult(req);
-    //console.log(errors);
     if (!errors.isEmpty()) {
-        const error = new Error("validation failed");
+        const error = new Error('Validation failed, entered data is incorrect.');
         error.statusCode = 422;
         throw error;
     }
     if (!req.file) {
-        const error = new Error("No file provided");
+        const error = new Error('No image provided.');
         error.statusCode = 422;
         throw error;
     }
-
-    // console.log(req);
-    const imageUrl = req.file.path.replace("\\", "/");
+    const imageUrl = req.file.path;
     const title = req.body.title;
     const content = req.body.content;
-    let creator;
     const post = new Post({
         title: title,
         content: content,
         imageUrl: imageUrl,
-        creator: req.userId,
-        createdAt: Date.now()
+        creator: req.userId
     });
-    post.save().then(user => {
-        return User.findById(req.userId);
-    })
-        .then((user) => {
-            // console.log(user);
-            user.posts.push(post);
-
-            creator = user;
-            return user.save();
-
-        })
-        .then(result => {
-            res.status(201).json({
-                message: 'Post created successfully!',
-                post: post,
-                creator: { id: creator._id, name: creator.name }
-            });
-        })
-        .catch(err => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err); // because this is an async code in order to excute u need to move to the next phase first
+    try {
+        await post.save();
+        const user = await User.findById(req.userId);
+        user.posts.push(post);
+        await user.save();
+        io.getIO().emit('posts', {
+            action: 'create',
+            post: { ...post._doc, creator: { _id: req.userId, name: user.name } }
         });
-
+        res.status(201).json({
+            message: 'Post created successfully!',
+            post: post,
+            creator: { _id: user._id, name: user.name }
+        });
+    } catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    }
 };
-
 exports.getPost = (req, res, next) => {
     const postId = req.params.postId; // search for  id ll post
 
@@ -112,7 +100,7 @@ exports.getPost = (req, res, next) => {
             next(err);
         })
 }
-exports.updatePost = (req, res, next) => {
+exports.updatePost = async (req, res, next) => {
 
     const errors = validationResult(req);
     //console.log(errors);
@@ -133,41 +121,41 @@ exports.updatePost = (req, res, next) => {
         error.statusCode = 422;
         throw error;
     }
+    try {
+        const post = await Post.findById(postId).populate('creator');
 
-    Post.findById(postId)
-        .then(post => {
-            if (!post) {
-                const err = new Error('cant find ur post');
-                err.statusCode = 404;
-                throw err;
-            }
-            console.log(post.creator, req.userId);
-            if (post.creator.toString() !== req.userId) {
-                const err = new Error('Not autherized');
-                err.statusCode = 403;
-                throw err;
-            }
-            if (imageURL.toString() !== post.imageUrl.toString()) {
-                clearImage(post.imageUrl);
-            }
-            post.title = title;
-            post.imageUrl = imageURL;
-            post.content = content;
-            return post.save();
-        })
-        .then((result) => {
-            res.status(200).json({ message: 'post updated', post: result });
-        })
-        .catch((err) => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
-        })
+        if (!post) {
+            const err = new Error('cant find ur post');
+            err.statusCode = 404;
+            throw err;
+        }
+        console.log(post.creator, req.userId);
+        if (post.creator._id.toString() !== req.userId) {
+            const err = new Error('Not autherized');
+            err.statusCode = 403;
+            throw err;
+        }
+        if (imageURL.toString() !== post.imageUrl.toString()) {
+            clearImage(post.imageUrl);
+        }
+        post.title = title;
+        post.imageUrl = imageURL;
+        post.content = content;
+        const result = await post.save();
+        io.getIO('posts', { actoin: 'update', post: post })
+        res.status(200).json({ message: 'post updated', post: result });
+    }
+    catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    }
 }
-exports.deletePost = (req, res, next) => {
+exports.deletePost = async (req, res, next) => {
     const postId = req.params.postId;
-    Post.findById(postId).then((result) => {
+    try {
+        const result = await Post.findById(postId)
         if (!result) {
             const err = new Error('cant find ur post');
             err.statusCode = 404;
@@ -179,25 +167,19 @@ exports.deletePost = (req, res, next) => {
             throw err;
         }
         clearImage(result.imageUrl);
-        return Post.findByIdAndDelete(postId);
-
-    }).then(user => {
-        return User.findById(req.userId);
-    })
-        .then(result => {
-            result.posts.pull(postId);
-            return result.save()
-        })
-        .then(result => {
-
-            res.status(200).json({ message: 'post deleted' });
-        })
-        .catch((err) => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
-        })
+        await Post.findByIdAndDelete(postId);
+        const user = await User.findById(req.userId);
+        user.posts.pull(postId);
+        await user.save();
+        io.getIO.emit('posts', { action: 'delete', post: postId })
+        res.status(200).json({ message: 'post deleted' });
+    }
+    catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    }
 
 }
 const clearImage = filePath => {

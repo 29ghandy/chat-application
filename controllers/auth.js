@@ -3,7 +3,7 @@ const { validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-exports.signup = (req, res, next) => {
+exports.signup = async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         const error = new Error('Validation failed!');
@@ -15,103 +15,102 @@ exports.signup = (req, res, next) => {
     const email = req.body.email;
     const password = req.body.password;
     const name = req.body.name;
-    bcrypt.hash(password, 12).then(hashedPassword => {
+    try {
+        const hashedPassword = await bcrypt.hash(password, 12)
         const user = new User({
             email: email,
             password: hashedPassword,
             name: name
 
         })
-        return user.save();
-    }).then(result => {
+        const result = await user.save();
+
         console.log(result);
         res.status(201).json({ message: 'User created!', userId: result._id });
-    })
-        .catch(err => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
-        });
+    }
+    catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    };
 
 }
 
-exports.login = (req, res, next) => {
+exports.login = async (req, res, next) => {
 
     const email = req.body.email;
     const password = req.body.password;
     let loadedAccount = null;
-    User.findOne({ email: email })
-        .then(result => {
-            if (!result) {
-                const error = new Error('Can not find the email');
-                error.statusCode = 401;
-                throw error;
-            }
-            loadedAccount = result;
-            return bcrypt.compare(password, result.password);
-        }).then(isEqual => {
-            if (!isEqual) {
-                const error = new Error('Wrong password');
-                error.statusCode = 401;
-                throw error;
-            }
-            const token = jwt.sign({
-                email: email,
-                userId: loadedAccount._id
-            }, 'secret', { expiresIn: '1h' });
+    try {
+        const result = await User.findOne({ email: email })
 
-            res.status(200).json({ token: token, userId: loadedAccount._id.toString() })
+        if (!result) {
+            const error = new Error('Can not find the email');
+            error.statusCode = 401;
+            throw error;
+        }
+        loadedAccount = result;
+        const isEqual = await bcrypt.compare(password, result.password);
+
+        if (!isEqual) {
+            const error = new Error('Wrong password');
+            error.statusCode = 401;
+            throw error;
+        }
+        const token = jwt.sign({
+            email: email,
+            userId: loadedAccount._id
+        }, 'secret', { expiresIn: '1h' });
+
+        res.status(200).json({ token: token, userId: loadedAccount._id.toString() })
+    }
 
 
-        })
-        .catch(err => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
+    catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
 
-        })
+    }
 }
 
-exports.getStatus = (req, res, next) => {
+exports.getStatus = async (req, res, next) => {
 
-    User.findById(req.userId)
-        .then(user => {
-            if (!user) {
-                const error = new Error('Can not find the email');
-                error.statusCode = 401;
-                throw error;
-            }
-            res.status(200).json({ status: user.status });
-        })
-        .catch(err => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
-        })
+    try {
+        const user = await User.findById(req.userId)
+        if (!user) {
+            const error = new Error('Can not find the email');
+            error.statusCode = 401;
+            throw error;
+        }
+        res.status(200).json({ status: user.status });
+    }
+    catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    }
 }
-exports.updateStatus = (req, res, next) => {
+exports.updateStatus = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.userId)
+        if (!user) {
+            const error = new Error('Can not find the email');
+            error.statusCode = 401;
+            throw error;
+        }
+        user.status = req.body.status;
+        await user.save();
+        res.status(200).json({ message: 'updated' });
 
-    User.findById(req.userId)
-        .then(user => {
-            if (!user) {
-                const error = new Error('Can not find the email');
-                error.statusCode = 401;
-                throw error;
-            }
-            user.status = req.body.status;
-            return user.save();
-        })
-        .then(result => {
-            res.status(200).json({ message: 'updated' });
-        })
-        .catch(err => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
-        })
+    } catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    }
 
 }

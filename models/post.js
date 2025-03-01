@@ -20,11 +20,13 @@ const postSchema = new Schema({
     creator: {
         type: Schema.Types.ObjectId,
         ref: 'User',
+        name: String,
         required: true
     }
     ,
     createdAt: {
         type: Date,
+        default: Date.now(),
         require: true
     }
 }, { timeStamps: true })
