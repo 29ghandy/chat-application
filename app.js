@@ -1,14 +1,13 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-const feedRoutes = require('./routes/feed');
-const authRoutes = require('./routes/auth');
+
 const path = require('path');
 const { error } = require('console');
 const app = express();
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
-const { Socket } = require('socket.io');
+
 
 // app.use(bodyParser.urlencoded()); // x-www-form-urlencoded <form>
 app.use(bodyParser.json()); // application/json
@@ -43,8 +42,6 @@ app.use((req, res, next) => {
 });
 
 
-app.use('/feed', feedRoutes);
-app.use('/auth', authRoutes);
 
 
 app.use(error, (req, res, next) => {
@@ -56,12 +53,8 @@ app.use(error, (req, res, next) => {
 
 mongoose.connect("mongodb+srv://omarmamdouh753:DDwpuXrxbAJbFyFV@cluster0.w7ylr.mongodb.net/")
     .then((res) => {
-        const server = app.listen(8080);
-        const io = require('./socket').init(server);
-        io.on('connection', sokect => {
-            console.log('connection established');
-        }
-        );
+        app.listen(8080);
+
     })
     .catch((err) => {
         console.log(err);
